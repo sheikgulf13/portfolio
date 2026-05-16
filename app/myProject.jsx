@@ -5,18 +5,10 @@ import { TypingText } from '@/components/CustomTexts';
 import { fadeIn, staggerContainer } from '@/utils/motion';
 import ProjectCard from '@/components/ProjectCard';
 import { projects } from '@/utils/data';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-function myProject() {
+function MyProject() {
   const [active, setActive] = useState('all')
-  const [onWindow, setOnWindow] = useState()
-
-  useEffect(() => {
-    if(window === undefined) return
-    else {
-      setOnWindow(window.onload)
-    }
-  }, [])
   return (
     <motion.div variants={staggerContainer}
     initial='hidden'
@@ -51,7 +43,7 @@ function myProject() {
           </div>
 
           <motion.div layout className='project-cat md:w-[70vw] flex flex-nowrap md:flex-wrap gap-5 md:gap-16 m-5 items-center md:justify-center'>
-            {onWindow || active === 'all' ? projects?.map((project, index) => {
+            {active === 'all' ? projects?.map((project, index) => {
               return (
                 <ProjectCard
                   key={index}
@@ -109,4 +101,4 @@ function myProject() {
   )
 }
 
-export default myProject;
+export default MyProject;

@@ -1,22 +1,34 @@
-
-import Hero from './hero';
-import MyProject from './myProject';
-import About from './about';
-import Services from './services';
-import Footer from './footer';
-import Contact from './contact';
+﻿import About from "@/components/portfolio/About";
+import Capabilities from "@/components/portfolio/Capabilities";
+import Contact from "@/components/portfolio/Contact";
+import CustomCursor from "@/components/portfolio/CustomCursor";
+import Footer from "@/components/portfolio/Footer";
+import Hero from "@/components/portfolio/Hero";
+import Navigation from "@/components/portfolio/Navigation";
+import NoiseOverlay from "@/components/portfolio/NoiseOverlay";
+import PortfolioEffects from "@/components/portfolio/PortfolioEffects";
+import Process from "@/components/portfolio/Process";
+import StackMarquee from "@/components/portfolio/StackMarquee";
+import Testimonial from "@/components/portfolio/Testimonial";
 
 export default function Home() {
- 
-  
   return (
-    <main className='main scroll-smooth overflow-hidden sm:overflow-hidden md:overflow-hidden' id='section'>
-      <Hero />
-      <About />
-      <Services />
-      <MyProject />
-      <Contact />
+    <>
+      <NoiseOverlay />
+      <CustomCursor />
+      <Navigation />
+      <main>
+        <Hero />
+        {/* <Work /> */}
+        <StackMarquee />
+        <Capabilities />
+        <Testimonial />
+        <Process />
+        <About />
+        <Contact />
+      </main>
       <Footer />
-    </main>
-  )
+      <PortfolioEffects />
+    </>
+  );
 }
