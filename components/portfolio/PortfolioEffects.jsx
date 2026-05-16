@@ -18,6 +18,12 @@ function setStoredTheme(theme) {
   }
 }
 
+function clamp01(value) {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
 export default function PortfolioEffects() {
   useEffect(() => {
     const cleanups = [];
@@ -365,45 +371,299 @@ export default function PortfolioEffects() {
           });
 
           if (processSection && processStory && processStages.length > 0) {
-            gsap.set(processStages, { autoAlpha: 0, y: 48 });
+            gsap.set(processStages, { autoAlpha: 0 });
+            processStages.forEach((stage) => stage.classList.remove("is-active"));
+            const aboutSection = document.getElementById("about");
 
-            const introHold = 0.65;
-            const stageHold = 1.2;
-            const transition = 0.65;
-            const lastHold = 0.55;
+            const setActiveStage = (activeIndex) => {
+              processStages.forEach((stage, index) => {
+                stage.classList.toggle("is-active", index === activeIndex);
+              });
+              if (activeIndex >= 0) {
+                processSection.setAttribute("data-process-active", String(activeIndex + 1));
+              } else {
+                processSection.removeAttribute("data-process-active");
+              }
+            };
+
+            const introHold = 0.48;
+            const stageHold = 1.32;
+            const transition = 0.78;
+            const transitionGap = 0.12;
+            const lastHold = 0.68;
             const processScrollDistance = Math.max(4200, processStages.length * 1400);
+            const processVisualRoots = processStages.map((stage) => stage.querySelector(".process-visual"));
+            const processVisualSequences = processStages.map((stage, index) => {
+              if (index === 0) {
+                return gsap.utils.toArray(
+                  ".visual-brief-head, .visual-brief-line-1, .visual-brief-line-2, .visual-brief-line-3, .visual-lens, .visual-flow-line-1, .visual-flow-node-1, .visual-flow-node-2, .visual-flow-line-2, .visual-flow-node-3",
+                  stage,
+                );
+              }
+              if (index === 1) {
+                return gsap.utils.toArray(
+                  ".visual-window-head, .visual-build-nav-1, .visual-build-nav-2, .visual-build-nav-3, .visual-build-progress-step-1, .visual-build-progress-step-2, .visual-build-progress-step-3, .visual-cell-1, .visual-cell-2, .visual-cell-3, .visual-cell-4",
+                  stage,
+                );
+              }
+              return gsap.utils.toArray(
+                ".visual-handover-source, .visual-handover-source-line-1, .visual-handover-source-line-2, .visual-handover-source-line-3, .visual-handover-arrow, .visual-handover-target, .visual-handover-target-slot, .visual-handover-target-badge",
+                stage,
+              );
+            });
+            const allVisualParts = processVisualSequences.flat();
+            if (allVisualParts.length > 0) {
+              gsap.set(allVisualParts, { autoAlpha: 0.16, scale: 0.972, x: -2, y: 12, rotate: -0.25, filter: "blur(1.4px)" });
+            }
+            if (processVisualRoots.length > 0) {
+              gsap.set(processVisualRoots, { autoAlpha: 0.78, x: -1, y: 10, scale: 0.992, rotate: -0.16, filter: "blur(0.6px)" });
+            }
 
-            const processTimeline = gsap.timeline({
+            const addVisualReveal = (timeline, elements) => {
+              if (!elements || elements.length === 0) return;
+              timeline.to(
+                elements,
+                {
+                  autoAlpha: 1,
+                  scale: 1,
+                  x: 0,
+                  y: 0,
+                  rotate: 0,
+                  filter: "blur(0px)",
+                  duration: transition * 0.74,
+                  ease: "expo.out",
+                  stagger: { each: 0.038, from: "start" },
+                },
+                "<0.01",
+              );
+            };
+
+            const addVisualDim = (timeline, elements) => {
+              if (!elements || elements.length === 0) return;
+              timeline.to(
+                elements,
+                {
+                  autoAlpha: 0.16,
+                  scale: 0.982,
+                  x: 1,
+                  y: 8,
+                  rotate: 0.18,
+                  filter: "blur(1.2px)",
+                  duration: transition * 0.52,
+                  ease: "power2.inOut",
+                  stagger: { each: 0.022, from: "end" },
+                },
+                "<",
+              );
+            };
+
+            const addVisualRootReveal = (timeline, root) => {
+              if (!root) return;
+              timeline.to(
+                root,
+                {
+                  autoAlpha: 1,
+                  x: 0,
+                  y: 0,
+                  scale: 1,
+                  rotate: 0,
+                  filter: "blur(0px)",
+                  duration: transition * 0.66,
+                  ease: "expo.out",
+                },
+                "<",
+              );
+            };
+
+            const addVisualRootDim = (timeline, root) => {
+              if (!root) return;
+              timeline.to(
+                root,
+                {
+                  autoAlpha: 0.78,
+                  x: 0.8,
+                  y: 9,
+                  scale: 0.993,
+                  rotate: 0.12,
+                  filter: "blur(0.45px)",
+                  duration: transition * 0.5,
+                  ease: "power2.inOut",
+                },
+                "<",
+              );
+            };
+
+            let processTimeline = null;
+            let rafId = 0;
+            let processEndScrollY = 0;
+            let aboutTopScrollY = 0;
+            let lastProgressWidth = -1;
+            let lastTrackScale = -1;
+            let lastScrollY = window.scrollY || window.pageYOffset || 0;
+
+            const updateProgressMetrics = () => {
+              const processTrigger = processTimeline?.scrollTrigger;
+              if (!processTrigger) return;
+              processEndScrollY = processTrigger.end;
+              if (aboutSection) {
+                const aboutRect = aboutSection.getBoundingClientRect();
+                aboutTopScrollY = window.scrollY + aboutRect.top;
+              } else {
+                aboutTopScrollY = processEndScrollY;
+              }
+            };
+
+            const getProcessProgress = () => {
+              const processTrigger = processTimeline?.scrollTrigger;
+              if (!processTrigger) return 0;
+
+              const scrollY = window.scrollY || window.pageYOffset || 0;
+              const fillStart = processTrigger.start;
+              const fillEnd = processEndScrollY;
+
+              if (scrollY <= fillStart) return 0;
+
+              if (scrollY <= fillEnd) {
+                const fillSpan = Math.max(1, fillEnd - fillStart);
+                return clamp01((scrollY - fillStart) / fillSpan);
+              }
+
+              return 1;
+            };
+
+            const getProcessTrackScale = (scrollY, isScrollingDown) => {
+              const processTrigger = processTimeline?.scrollTrigger;
+              if (!processTrigger) return 1;
+
+              const fillEnd = processEndScrollY;
+              const shrinkEndDown = aboutTopScrollY - 10;
+              const unshrinkStartUp = aboutTopScrollY - 10;
+
+              if (scrollY <= fillEnd) return 1;
+
+              if (isScrollingDown) {
+                const shrinkSpan = shrinkEndDown - fillEnd;
+                if (shrinkSpan <= 1) return scrollY > fillEnd ? 0 : 1;
+
+                const shrinkProgress = clamp01((scrollY - fillEnd) / shrinkSpan);
+                return 1 - shrinkProgress;
+              }
+
+              if (scrollY >= unshrinkStartUp) return 0;
+
+              const unshrinkSpan = unshrinkStartUp - fillEnd;
+              if (unshrinkSpan <= 1) return scrollY > fillEnd ? 0 : 1;
+
+              const unshrinkProgress = clamp01((scrollY - fillEnd) / unshrinkSpan);
+              return 1 - unshrinkProgress;
+            };
+
+            const applyProcessProgress = () => {
+              if (!processProgressFill) return;
+              const scrollY = window.scrollY || window.pageYOffset || 0;
+              const isScrollingDown = scrollY >= lastScrollY;
+              lastScrollY = scrollY;
+              const fillProgress = getProcessProgress();
+              const trackScale = getProcessTrackScale(scrollY, isScrollingDown);
+              const widthPercent = Number((fillProgress * 100).toFixed(2));
+              const roundedTrackScale = Number(trackScale.toFixed(4));
+              if (widthPercent !== lastProgressWidth) {
+                lastProgressWidth = widthPercent;
+                processProgressFill.style.width = `${widthPercent}%`;
+              }
+              if (roundedTrackScale !== lastTrackScale) {
+                lastTrackScale = roundedTrackScale;
+                processSection.style.setProperty("--process-track-scale", roundedTrackScale.toFixed(4));
+              }
+              processSection.style.setProperty("--process-progress", fillProgress.toFixed(4));
+            };
+
+            const scheduleProcessProgressUpdate = () => {
+              if (rafId) return;
+              rafId = window.requestAnimationFrame(() => {
+                rafId = 0;
+                applyProcessProgress();
+              });
+            };
+
+            const handleProcessProgressRefresh = () => {
+              updateProgressMetrics();
+              scheduleProcessProgressUpdate();
+            };
+
+            const onWindowScroll = () => scheduleProcessProgressUpdate();
+            const onWindowResize = () => handleProcessProgressRefresh();
+
+            processTimeline = gsap.timeline({
               scrollTrigger: {
                 trigger: processSection,
                 start: "top top",
                 end: `+=${processScrollDistance}`,
                 pin: true,
                 pinReparent: true,
-                scrub: true,
+                scrub: 0.42,
                 anticipatePin: 1,
                 invalidateOnRefresh: true,
                 onToggle: (self) => setNavHidden(self.isActive),
-                onUpdate: (self) => {
-                  if (!processProgressFill) return;
-                  processProgressFill.style.width = `${(self.progress * 100).toFixed(2)}%`;
-                },
+                onRefresh: () => handleProcessProgressRefresh(),
+                onUpdate: () => scheduleProcessProgressUpdate(),
               },
             });
 
+            updateProgressMetrics();
+            applyProcessProgress();
+            window.addEventListener("scroll", onWindowScroll, { passive: true });
+            window.addEventListener("resize", onWindowResize, { passive: true });
+            ScrollTrigger.addEventListener("refresh", handleProcessProgressRefresh);
+
             processTimeline.to({}, { duration: introHold });
-            processTimeline.to(processStages[0], { autoAlpha: 1, y: 0, duration: transition });
+            processTimeline.to(processStages[0], {
+              autoAlpha: 1,
+              duration: transition,
+              ease: "power2.out",
+              onStart: () => setActiveStage(0),
+              onReverseComplete: () => setActiveStage(-1),
+            });
+            addVisualRootReveal(processTimeline, processVisualRoots[0]);
+            addVisualReveal(processTimeline, processVisualSequences[0]);
 
             for (let index = 1; index < processStages.length; index += 1) {
               processTimeline.to({}, { duration: stageHold });
-              processTimeline.to(processStages[index - 1], { autoAlpha: 0, y: -36, duration: transition });
-              processTimeline.to(processStages[index], { autoAlpha: 1, y: 0, duration: transition }, "<0.08");
+              processTimeline.to(processStages[index - 1], { autoAlpha: 0, duration: transition, ease: "power2.inOut" });
+              addVisualRootDim(processTimeline, processVisualRoots[index - 1]);
+              addVisualDim(processTimeline, processVisualSequences[index - 1]);
+              processTimeline.to({}, { duration: transitionGap });
+              processTimeline.to(processStages[index], {
+                autoAlpha: 1,
+                duration: transition,
+                ease: "power2.out",
+                onStart: () => setActiveStage(index),
+                onReverseComplete: () => setActiveStage(index - 1),
+              });
+              addVisualRootReveal(processTimeline, processVisualRoots[index]);
+              addVisualReveal(processTimeline, processVisualSequences[index]);
             }
 
             processTimeline.to({}, { duration: lastHold });
-            processTimeline.to(processStages[processStages.length - 1], { autoAlpha: 0, y: -36, duration: transition });
+            processTimeline.to(processStages[processStages.length - 1], {
+              autoAlpha: 0,
+              duration: transition,
+              ease: "power2.inOut",
+              onStart: () => setActiveStage(-1),
+              onReverseComplete: () => setActiveStage(processStages.length - 1),
+            });
+            addVisualRootDim(processTimeline, processVisualRoots[processStages.length - 1]);
+            addVisualDim(processTimeline, processVisualSequences[processStages.length - 1]);
 
             cleanups.push(() => {
+              window.removeEventListener("scroll", onWindowScroll);
+              window.removeEventListener("resize", onWindowResize);
+              ScrollTrigger.removeEventListener("refresh", handleProcessProgressRefresh);
+              if (rafId) window.cancelAnimationFrame(rafId);
+              processSection.removeAttribute("data-process-active");
+              processSection.style.removeProperty("--process-progress");
+              processSection.style.removeProperty("--process-track-scale");
+              processStages.forEach((stage) => stage.classList.remove("is-active"));
               processTimeline.scrollTrigger?.kill();
               setNavHidden(false, { immediate: true });
               clearPendingNavShow();

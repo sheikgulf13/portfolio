@@ -6,7 +6,9 @@ export default function About() {
       </div>
       <div className="about-grid">
         <div className="reveal">
-          <p className="about-title">Hi, I&apos;m Sheik.</p>
+          <p className="about-title" aria-label="Sheik Gulfaan">
+            SG
+          </p>
         </div>
         <div className="about-body reveal" data-cursor-shape="text">
           I&apos;m a fullstack developer based in Chennai, India. I work with founders and small teams to ship real products -

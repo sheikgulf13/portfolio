@@ -2,11 +2,13 @@
 import Capabilities from "@/components/portfolio/Capabilities";
 import Contact from "@/components/portfolio/Contact";
 import CustomCursor from "@/components/portfolio/CustomCursor";
+import CustomScrollbar from "@/components/portfolio/CustomScrollbar";
 import Footer from "@/components/portfolio/Footer";
 import Hero from "@/components/portfolio/Hero";
 import Navigation from "@/components/portfolio/Navigation";
 import NoiseOverlay from "@/components/portfolio/NoiseOverlay";
 import PortfolioEffects from "@/components/portfolio/PortfolioEffects";
+import Preloader from "@/components/portfolio/Preloader";
 import Process from "@/components/portfolio/Process";
 import StackMarquee from "@/components/portfolio/StackMarquee";
 import Testimonial from "@/components/portfolio/Testimonial";
@@ -14,8 +16,10 @@ import Testimonial from "@/components/portfolio/Testimonial";
 export default function Home() {
   return (
     <>
+      <Preloader />
       <NoiseOverlay />
       <CustomCursor />
+      <CustomScrollbar />
       <Navigation />
       <main>
         <Hero />
