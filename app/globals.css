@@ -204,6 +204,12 @@ img {
   .site-scrollbar {
     display: none;
   }
+
+  .cap-row,
+  .cap-title,
+  .cap-desc {
+    transition: none;
+  }
 }
 
 #cursor-dot.hovering {
@@ -769,9 +775,7 @@ section {
   border-bottom: 1px solid rgba(138, 131, 120, 0.15);
   align-items: center;
   position: relative;
-  transition:
-    padding 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    gap 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cap-num {
@@ -786,31 +790,39 @@ section {
   letter-spacing: -0.02em;
   position: relative;
   display: inline-block;
-  transition: font-size 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: left center;
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cap-desc {
   font-size: 0.875rem;
   color: var(--muted);
   line-height: 1.55;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   transition:
-    font-size 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    line-height 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.cap-row:hover {
-  padding: 3.5rem 0;
-  gap: clamp(1.25rem, 2.2vw, 2.5rem);
-}
+@media (hover: hover) and (pointer: fine) {
+  .cap-row:hover {
+    padding: 3.5rem 0;
+    gap: clamp(1.25rem, 2.2vw, 2.5rem);
+    border-bottom-color: rgba(200, 160, 74, 0.35);
+  }
 
-.cap-row:hover .cap-title {
-  font-size: clamp(1.5rem, 2.9vw, 2.2rem);
-}
+  .cap-row:hover .cap-title {
+    transform: scale(1.035);
+    color: var(--accent);
+  }
 
-.cap-row:hover .cap-desc {
-  font-size: clamp(0.95rem, 1.15vw, 1.1rem);
-  line-height: 1.65;
+  .cap-row:hover .cap-desc {
+    color: color-mix(in srgb, var(--text) 76%, var(--muted));
+    opacity: 0.98;
+  }
 }
 
 #process {

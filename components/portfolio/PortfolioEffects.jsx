@@ -210,20 +210,22 @@ export default function PortfolioEffects() {
 
         if (isCoarsePointer) {
           ScrollTrigger.config({ ignoreMobileResize: true });
-          if (typeof ScrollTrigger.normalizeScroll === "function") {
-            ScrollTrigger.normalizeScroll(true);
-            cleanups.push(() => ScrollTrigger.normalizeScroll(false));
-          }
         }
 
         let lenis = null;
         try {
-          if (!isCoarsePointer) {
-            lenis = new Lenis({ lerp: 0.1, autoRaf: false });
-          }
-          if (!lenis) {
-            throw new Error("Lenis disabled on coarse pointer");
-          }
+          lenis = new Lenis(
+            isCoarsePointer
+              ? {
+                  autoRaf: false,
+                  lerp: 0.085,
+                  smoothWheel: true,
+                  syncTouch: true,
+                  syncTouchLerp: 0.1,
+                  touchInertiaMultiplier: 1.15,
+                }
+              : { autoRaf: false, lerp: 0.1 },
+          );
           const updateScrollTrigger = () => ScrollTrigger.update();
           lenis.on("scroll", updateScrollTrigger);
 
@@ -239,9 +241,7 @@ export default function PortfolioEffects() {
             lenis.destroy();
           });
         } catch (error) {
-          if (error?.message !== "Lenis disabled on coarse pointer") {
-            console.warn("Lenis init failed", error);
-          }
+          console.warn("Lenis init failed", error);
         }
 
         document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
@@ -523,6 +523,7 @@ export default function PortfolioEffects() {
             let lastProgressWidth = -1;
             let lastTrackScale = -1;
             let lastScrollY = window.scrollY || window.pageYOffset || 0;
+            let lastViewportHeight = Math.round(window.visualViewport?.height || window.innerHeight);
             const releaseThreshold = isCoarsePointer ? 0.998 : 0.995;
             const releaseThresholdReverse = 1 - releaseThreshold;
             const pinBoundaryOffset = 2;
@@ -664,8 +665,15 @@ export default function PortfolioEffects() {
               if (viewportRafId) return;
               viewportRafId = window.requestAnimationFrame(() => {
                 viewportRafId = 0;
+                const currentViewportHeight = Math.round(window.visualViewport?.height || window.innerHeight);
+                const hasMeaningfulChange = Math.abs(currentViewportHeight - lastViewportHeight) >= 6;
+                if (hasMeaningfulChange) {
+                  lastViewportHeight = currentViewportHeight;
+                }
                 syncProcessViewportUnit();
-                scheduleScrollTriggerRefresh();
+                if (hasMeaningfulChange) {
+                  scheduleScrollTriggerRefresh();
+                }
               });
             };
 
