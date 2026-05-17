@@ -775,7 +775,10 @@ section {
   border-bottom: 1px solid rgba(138, 131, 120, 0.15);
   align-items: center;
   position: relative;
-  transition: border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    padding 0.48s cubic-bezier(0.22, 1, 0.36, 1),
+    gap 0.48s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cap-num {
@@ -791,9 +794,8 @@ section {
   position: relative;
   display: inline-block;
   transform-origin: left center;
-  transition:
-    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-    color 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cap-desc {
@@ -815,8 +817,7 @@ section {
   }
 
   .cap-row:hover .cap-title {
-    transform: scale(1.035);
-    color: var(--accent);
+    transform: scale(1.028);
   }
 
   .cap-row:hover .cap-desc {
@@ -1566,12 +1567,14 @@ section {
 
 .process-progress {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 0;
   width: min(1120px, 98vw);
   height: 3px;
-  transform: translateX(-50%) scaleX(var(--process-track-scale, 1));
-  transform-origin: center center;
+  margin-left: auto;
+  margin-right: auto;
+  transform: translate3d(0, calc(var(--process-progress-lift, 0px) * -1), 0);
   background: rgba(138, 131, 120, 0.2);
   overflow: hidden;
   will-change: transform;

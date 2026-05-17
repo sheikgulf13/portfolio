@@ -301,17 +301,10 @@ export default function PortfolioEffects() {
         const context = gsap.context(() => {
           const navElement = document.querySelector("nav");
           let lastNavHidden = null;
-          let navShowTimeoutId = 0;
-          const clearPendingNavShow = () => {
-            if (!navShowTimeoutId) return;
-            window.clearTimeout(navShowTimeoutId);
-            navShowTimeoutId = 0;
-          };
           const setNavHidden = (nextHidden, options = {}) => {
             const { immediate = false } = options;
             if (!navElement) return;
             if (nextHidden) {
-              clearPendingNavShow();
               if (lastNavHidden === true) return;
               lastNavHidden = true;
               navElement.classList.add("nav-hidden");
@@ -319,20 +312,15 @@ export default function PortfolioEffects() {
             }
 
             if (immediate) {
-              clearPendingNavShow();
               if (lastNavHidden === false) return;
               lastNavHidden = false;
               navElement.classList.remove("nav-hidden");
               return;
             }
 
-            clearPendingNavShow();
-            navShowTimeoutId = window.setTimeout(() => {
-              navShowTimeoutId = 0;
-              if (lastNavHidden === false) return;
-              lastNavHidden = false;
-              navElement.classList.remove("nav-hidden");
-            }, 110);
+            if (lastNavHidden === false) return;
+            lastNavHidden = false;
+            navElement.classList.remove("nav-hidden");
           };
           const heroHeadline = document.querySelector(".hero-headline");
           const heroSub = document.querySelector(".hero-sub");
@@ -519,14 +507,17 @@ export default function PortfolioEffects() {
             let viewportRafId = 0;
             let refreshTimeoutId = 0;
             let processEndScrollY = 0;
-            let aboutTopScrollY = 0;
+            let processTrackLiftStartScrollY = 0;
+            let processTrackLiftBoostScrollY = 0;
+            let processTrackLiftStartAboutTop = 1;
+            let lastStageFadeStartProgress = 0.82;
+            let lastStageFadeEndProgress = 0.9;
             let lastProgressWidth = -1;
-            let lastTrackScale = -1;
-            let lastScrollY = window.scrollY || window.pageYOffset || 0;
             let lastViewportHeight = Math.round(window.visualViewport?.height || window.innerHeight);
             const releaseThreshold = isCoarsePointer ? 0.998 : 0.995;
             const releaseThresholdReverse = 1 - releaseThreshold;
             const pinBoundaryOffset = 2;
+            let processTrackMaxLiftPx = isCoarsePointer ? 180 : 220;
             let processLocked = false;
 
             const setProcessLocked = (locked, options = {}) => {
@@ -551,6 +542,10 @@ export default function PortfolioEffects() {
               const progress = getProcessTimelineProgress();
               if (direction >= 0) return progress >= releaseThreshold;
               return progress <= releaseThresholdReverse;
+            };
+            const shouldReleasePinForDirection = (direction) => {
+              if (!isCoarsePointer) return true;
+              return canReleasePinForDirection(direction);
             };
 
             const retainProcessPin = (scrollTrigger, direction) => {
@@ -579,12 +574,22 @@ export default function PortfolioEffects() {
             const updateProgressMetrics = () => {
               const processTrigger = processTimeline?.scrollTrigger;
               if (!processTrigger) return;
+              const processStartScrollY = processTrigger.start;
+              const viewportHeight = window.visualViewport?.height || window.innerHeight;
+              const desiredLift = viewportHeight * (isCoarsePointer ? 0.26 : 0.32);
+              processTrackMaxLiftPx = Math.round(Math.min(300, Math.max(120, desiredLift)));
               processEndScrollY = processTrigger.end;
+              processTrackLiftStartScrollY =
+                processStartScrollY + (processEndScrollY - processStartScrollY) * lastStageFadeStartProgress;
+              processTrackLiftBoostScrollY =
+                processStartScrollY + (processEndScrollY - processStartScrollY) * lastStageFadeEndProgress;
               if (aboutSection) {
-                const aboutRect = aboutSection.getBoundingClientRect();
-                aboutTopScrollY = window.scrollY + aboutRect.top;
+                const currentScrollY = window.scrollY || window.pageYOffset || 0;
+                const currentAboutTop = aboutSection.getBoundingClientRect().top;
+                const aboutTopAtLiftStart = currentAboutTop + (currentScrollY - processTrackLiftStartScrollY);
+                processTrackLiftStartAboutTop = Math.max(1, aboutTopAtLiftStart);
               } else {
-                aboutTopScrollY = processEndScrollY;
+                processTrackLiftStartAboutTop = 1;
               }
             };
 
@@ -594,7 +599,7 @@ export default function PortfolioEffects() {
 
               const scrollY = window.scrollY || window.pageYOffset || 0;
               const fillStart = processTrigger.start;
-              const fillEnd = processEndScrollY;
+              const fillEnd = processTrackLiftStartScrollY;
 
               if (scrollY <= fillStart) return 0;
 
@@ -606,51 +611,37 @@ export default function PortfolioEffects() {
               return 1;
             };
 
-            const getProcessTrackScale = (scrollY, isScrollingDown) => {
-              const processTrigger = processTimeline?.scrollTrigger;
-              if (!processTrigger) return 1;
+            const getProcessTrackLift = (scrollY) => {
+              if (scrollY <= processTrackLiftStartScrollY) return 0;
+              if (!aboutSection) return processTrackMaxLiftPx;
 
-              const fillEnd = processEndScrollY;
-              const shrinkEndDown = aboutTopScrollY - 10;
-              const unshrinkStartUp = aboutTopScrollY - 10;
-
-              if (scrollY <= fillEnd) return 1;
-
-              if (isScrollingDown) {
-                const shrinkSpan = shrinkEndDown - fillEnd;
-                if (shrinkSpan <= 1) return scrollY > fillEnd ? 0 : 1;
-
-                const shrinkProgress = clamp01((scrollY - fillEnd) / shrinkSpan);
-                return 1 - shrinkProgress;
+              const aboutTop = aboutSection.getBoundingClientRect().top;
+              if (aboutTop <= 0) return processTrackMaxLiftPx;
+              const aboutTopReachZeroScrollY = processTrackLiftStartScrollY + processTrackLiftStartAboutTop;
+              const gentleLiftWeight = 0.24;
+              const boostLiftWeight = 1 - gentleLiftWeight;
+              if (scrollY <= processTrackLiftBoostScrollY) {
+                const phase1Span = Math.max(1, processTrackLiftBoostScrollY - processTrackLiftStartScrollY);
+                const phase1Progress = clamp01((scrollY - processTrackLiftStartScrollY) / phase1Span);
+                return processTrackMaxLiftPx * gentleLiftWeight * phase1Progress;
               }
-
-              if (scrollY >= unshrinkStartUp) return 0;
-
-              const unshrinkSpan = unshrinkStartUp - fillEnd;
-              if (unshrinkSpan <= 1) return scrollY > fillEnd ? 0 : 1;
-
-              const unshrinkProgress = clamp01((scrollY - fillEnd) / unshrinkSpan);
-              return 1 - unshrinkProgress;
+              const phase2Span = Math.max(1, aboutTopReachZeroScrollY - processTrackLiftBoostScrollY);
+              const phase2Progress = clamp01((scrollY - processTrackLiftBoostScrollY) / phase2Span);
+              return processTrackMaxLiftPx * (gentleLiftWeight + boostLiftWeight * phase2Progress);
             };
 
             const applyProcessProgress = () => {
               if (!processProgressFill) return;
               const scrollY = window.scrollY || window.pageYOffset || 0;
-              const isScrollingDown = scrollY >= lastScrollY;
-              lastScrollY = scrollY;
               const fillProgress = getProcessProgress();
-              const trackScale = getProcessTrackScale(scrollY, isScrollingDown);
+              const trackLiftPx = getProcessTrackLift(scrollY);
               const widthPercent = Number((fillProgress * 100).toFixed(2));
-              const roundedTrackScale = Number(trackScale.toFixed(4));
               if (widthPercent !== lastProgressWidth) {
                 lastProgressWidth = widthPercent;
                 processProgressFill.style.width = `${widthPercent}%`;
               }
-              if (roundedTrackScale !== lastTrackScale) {
-                lastTrackScale = roundedTrackScale;
-                processSection.style.setProperty("--process-track-scale", roundedTrackScale.toFixed(4));
-              }
               processSection.style.setProperty("--process-progress", fillProgress.toFixed(4));
+              processSection.style.setProperty("--process-progress-lift", `${trackLiftPx.toFixed(2)}px`);
             };
 
             const scheduleProcessProgressUpdate = () => {
@@ -700,16 +691,16 @@ export default function PortfolioEffects() {
                 onEnter: () => setProcessLocked(true),
                 onEnterBack: () => setProcessLocked(true),
                 onLeave: (self) => {
-                  if (canReleasePinForDirection(1)) {
+                  if (shouldReleasePinForDirection(1)) {
                     processSection.setAttribute("data-process-complete", "true");
-                    setProcessLocked(false);
+                    setProcessLocked(false, { immediateNav: true });
                     return;
                   }
                   retainProcessPin(self, 1);
                   setProcessLocked(true);
                 },
                 onLeaveBack: (self) => {
-                  if (canReleasePinForDirection(-1)) {
+                  if (shouldReleasePinForDirection(-1)) {
                     processSection.removeAttribute("data-process-complete");
                     setProcessLocked(false, { immediateNav: true });
                     return;
@@ -769,6 +760,7 @@ export default function PortfolioEffects() {
             }
 
             processTimeline.to({}, { duration: lastHold });
+            processTimeline.addLabel("process-last-stage-fade-start");
             processTimeline.to(processStages[processStages.length - 1], {
               autoAlpha: 0,
               duration: transition,
@@ -778,6 +770,14 @@ export default function PortfolioEffects() {
             });
             addVisualRootDim(processTimeline, processVisualRoots[processStages.length - 1]);
             addVisualDim(processTimeline, processVisualSequences[processStages.length - 1]);
+            const finalFadeStartTime = processTimeline.labels["process-last-stage-fade-start"];
+            if (typeof finalFadeStartTime === "number") {
+              const timelineDuration = Math.max(0.001, processTimeline.duration());
+              lastStageFadeStartProgress = clamp01(finalFadeStartTime / timelineDuration);
+              lastStageFadeEndProgress = clamp01((finalFadeStartTime + transition) / timelineDuration);
+            }
+            updateProgressMetrics();
+            applyProcessProgress();
 
             cleanups.push(() => {
               window.removeEventListener("scroll", onWindowScroll);
@@ -793,12 +793,11 @@ export default function PortfolioEffects() {
               processSection.removeAttribute("data-process-locked");
               processSection.removeAttribute("data-process-complete");
               processSection.style.removeProperty("--process-progress");
-              processSection.style.removeProperty("--process-track-scale");
+              processSection.style.removeProperty("--process-progress-lift");
               processSection.style.removeProperty("--process-dvh");
               processStages.forEach((stage) => stage.classList.remove("is-active"));
               processTimeline.scrollTrigger?.kill();
               setNavHidden(false, { immediate: true });
-              clearPendingNavShow();
             });
           }
 
