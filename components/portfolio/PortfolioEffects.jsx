@@ -30,6 +30,7 @@ export default function PortfolioEffects() {
     const html = document.documentElement;
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const isFinePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const isCoarsePointer = window.matchMedia("(hover: none), (pointer: coarse)").matches || navigator.maxTouchPoints > 0;
     const enableCustomCursor = isFinePointer && !prefersReduced;
 
     const toggleBtn = document.getElementById("theme-toggle");
@@ -207,9 +208,22 @@ export default function PortfolioEffects() {
 
         gsap.registerPlugin(ScrollTrigger);
 
-        let lenis;
+        if (isCoarsePointer) {
+          ScrollTrigger.config({ ignoreMobileResize: true });
+          if (typeof ScrollTrigger.normalizeScroll === "function") {
+            ScrollTrigger.normalizeScroll(true);
+            cleanups.push(() => ScrollTrigger.normalizeScroll(false));
+          }
+        }
+
+        let lenis = null;
         try {
-          lenis = new Lenis({ lerp: 0.1, autoRaf: false });
+          if (!isCoarsePointer) {
+            lenis = new Lenis({ lerp: 0.1, autoRaf: false });
+          }
+          if (!lenis) {
+            throw new Error("Lenis disabled on coarse pointer");
+          }
           const updateScrollTrigger = () => ScrollTrigger.update();
           lenis.on("scroll", updateScrollTrigger);
 
@@ -224,26 +238,33 @@ export default function PortfolioEffects() {
             lenis.off?.("scroll", updateScrollTrigger);
             lenis.destroy();
           });
+        } catch (error) {
+          if (error?.message !== "Lenis disabled on coarse pointer") {
+            console.warn("Lenis init failed", error);
+          }
+        }
 
-          document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
-            const onAnchorClick = (event) => {
-              const href = anchor.getAttribute("href");
-              if (!href || href === "#") return;
-              const target = document.querySelector(href);
-              if (!target) return;
-              event.preventDefault();
+        document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+          const onAnchorClick = (event) => {
+            const href = anchor.getAttribute("href");
+            if (!href || href === "#") return;
+            const target = document.querySelector(href);
+            if (!target) return;
+            event.preventDefault();
+            if (lenis) {
               lenis.scrollTo(target, {
                 offset: -80,
                 duration: 1.4,
                 easing: (t) => Math.min(1, 1.001 - 2 ** (-10 * t)),
               });
-            };
-            anchor.addEventListener("click", onAnchorClick);
-            cleanups.push(() => anchor.removeEventListener("click", onAnchorClick));
-          });
-        } catch (error) {
-          console.warn("Lenis init failed", error);
-        }
+              return;
+            }
+            const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - 80);
+            window.scrollTo({ top, behavior: "smooth" });
+          };
+          anchor.addEventListener("click", onAnchorClick);
+          cleanups.push(() => anchor.removeEventListener("click", onAnchorClick));
+        });
 
         if (enableCustomCursor) {
           document.querySelectorAll("[data-magnetic]").forEach((el) => {
@@ -494,12 +515,65 @@ export default function PortfolioEffects() {
             };
 
             let processTimeline = null;
-            let rafId = 0;
+            let progressRafId = 0;
+            let viewportRafId = 0;
+            let refreshTimeoutId = 0;
             let processEndScrollY = 0;
             let aboutTopScrollY = 0;
             let lastProgressWidth = -1;
             let lastTrackScale = -1;
             let lastScrollY = window.scrollY || window.pageYOffset || 0;
+            const releaseThreshold = isCoarsePointer ? 0.998 : 0.995;
+            const releaseThresholdReverse = 1 - releaseThreshold;
+            const pinBoundaryOffset = 2;
+            let processLocked = false;
+
+            const setProcessLocked = (locked, options = {}) => {
+              const { immediateNav = false } = options;
+              if (processLocked === locked) return;
+              processLocked = locked;
+              if (locked) {
+                processSection.setAttribute("data-process-locked", "true");
+                setNavHidden(true);
+                return;
+              }
+              processSection.removeAttribute("data-process-locked");
+              setNavHidden(false, { immediate: immediateNav });
+            };
+
+            const getProcessTimelineProgress = () => {
+              if (!processTimeline) return 0;
+              return clamp01(processTimeline.progress());
+            };
+
+            const canReleasePinForDirection = (direction) => {
+              const progress = getProcessTimelineProgress();
+              if (direction >= 0) return progress >= releaseThreshold;
+              return progress <= releaseThresholdReverse;
+            };
+
+            const retainProcessPin = (scrollTrigger, direction) => {
+              if (!isCoarsePointer) return;
+              const targetScroll = direction >= 0 ? scrollTrigger.end - pinBoundaryOffset : scrollTrigger.start + pinBoundaryOffset;
+              const currentScroll = scrollTrigger.scroll();
+              if (Math.abs(currentScroll - targetScroll) <= 0.5) return;
+              scrollTrigger.scroll(targetScroll);
+            };
+
+            const syncProcessViewportUnit = () => {
+              const viewportHeight = window.visualViewport?.height || window.innerHeight;
+              processSection.style.setProperty("--process-dvh", `${(viewportHeight / 100).toFixed(4)}px`);
+            };
+
+            const scheduleScrollTriggerRefresh = () => {
+              if (refreshTimeoutId) {
+                window.clearTimeout(refreshTimeoutId);
+              }
+              refreshTimeoutId = window.setTimeout(() => {
+                refreshTimeoutId = 0;
+                ScrollTrigger.refresh();
+              }, isCoarsePointer ? 140 : 90);
+            };
 
             const updateProgressMetrics = () => {
               const processTrigger = processTimeline?.scrollTrigger;
@@ -579,20 +653,31 @@ export default function PortfolioEffects() {
             };
 
             const scheduleProcessProgressUpdate = () => {
-              if (rafId) return;
-              rafId = window.requestAnimationFrame(() => {
-                rafId = 0;
+              if (progressRafId) return;
+              progressRafId = window.requestAnimationFrame(() => {
+                progressRafId = 0;
                 applyProcessProgress();
               });
             };
 
+            const scheduleViewportSyncAndRefresh = () => {
+              if (viewportRafId) return;
+              viewportRafId = window.requestAnimationFrame(() => {
+                viewportRafId = 0;
+                syncProcessViewportUnit();
+                scheduleScrollTriggerRefresh();
+              });
+            };
+
             const handleProcessProgressRefresh = () => {
+              syncProcessViewportUnit();
               updateProgressMetrics();
               scheduleProcessProgressUpdate();
             };
 
             const onWindowScroll = () => scheduleProcessProgressUpdate();
-            const onWindowResize = () => handleProcessProgressRefresh();
+            const onWindowResize = () => scheduleViewportSyncAndRefresh();
+            const onViewportShift = () => scheduleViewportSyncAndRefresh();
 
             processTimeline = gsap.timeline({
               scrollTrigger: {
@@ -601,19 +686,50 @@ export default function PortfolioEffects() {
                 end: `+=${processScrollDistance}`,
                 pin: true,
                 pinReparent: true,
-                scrub: 0.42,
-                anticipatePin: 1,
+                scrub: isCoarsePointer ? true : 0.42,
+                anticipatePin: isCoarsePointer ? 2 : 1,
                 invalidateOnRefresh: true,
-                onToggle: (self) => setNavHidden(self.isActive),
+                onEnter: () => setProcessLocked(true),
+                onEnterBack: () => setProcessLocked(true),
+                onLeave: (self) => {
+                  if (canReleasePinForDirection(1)) {
+                    processSection.setAttribute("data-process-complete", "true");
+                    setProcessLocked(false);
+                    return;
+                  }
+                  retainProcessPin(self, 1);
+                  setProcessLocked(true);
+                },
+                onLeaveBack: (self) => {
+                  if (canReleasePinForDirection(-1)) {
+                    processSection.removeAttribute("data-process-complete");
+                    setProcessLocked(false, { immediateNav: true });
+                    return;
+                  }
+                  retainProcessPin(self, -1);
+                  setProcessLocked(true);
+                },
                 onRefresh: () => handleProcessProgressRefresh(),
-                onUpdate: () => scheduleProcessProgressUpdate(),
+                onUpdate: () => {
+                  scheduleProcessProgressUpdate();
+                  if (!isCoarsePointer) return;
+                  if (getProcessTimelineProgress() >= releaseThreshold) {
+                    processSection.setAttribute("data-process-complete", "true");
+                  } else {
+                    processSection.removeAttribute("data-process-complete");
+                  }
+                },
               },
             });
 
             updateProgressMetrics();
             applyProcessProgress();
+            syncProcessViewportUnit();
             window.addEventListener("scroll", onWindowScroll, { passive: true });
             window.addEventListener("resize", onWindowResize, { passive: true });
+            window.addEventListener("orientationchange", onWindowResize, { passive: true });
+            window.visualViewport?.addEventListener("resize", onViewportShift, { passive: true });
+            window.visualViewport?.addEventListener("scroll", onViewportShift, { passive: true });
             ScrollTrigger.addEventListener("refresh", handleProcessProgressRefresh);
 
             processTimeline.to({}, { duration: introHold });
@@ -649,7 +765,7 @@ export default function PortfolioEffects() {
               autoAlpha: 0,
               duration: transition,
               ease: "power2.inOut",
-              onStart: () => setActiveStage(-1),
+              onComplete: () => setActiveStage(-1),
               onReverseComplete: () => setActiveStage(processStages.length - 1),
             });
             addVisualRootDim(processTimeline, processVisualRoots[processStages.length - 1]);
@@ -658,11 +774,19 @@ export default function PortfolioEffects() {
             cleanups.push(() => {
               window.removeEventListener("scroll", onWindowScroll);
               window.removeEventListener("resize", onWindowResize);
+              window.removeEventListener("orientationchange", onWindowResize);
+              window.visualViewport?.removeEventListener("resize", onViewportShift);
+              window.visualViewport?.removeEventListener("scroll", onViewportShift);
               ScrollTrigger.removeEventListener("refresh", handleProcessProgressRefresh);
-              if (rafId) window.cancelAnimationFrame(rafId);
+              if (progressRafId) window.cancelAnimationFrame(progressRafId);
+              if (viewportRafId) window.cancelAnimationFrame(viewportRafId);
+              if (refreshTimeoutId) window.clearTimeout(refreshTimeoutId);
               processSection.removeAttribute("data-process-active");
+              processSection.removeAttribute("data-process-locked");
+              processSection.removeAttribute("data-process-complete");
               processSection.style.removeProperty("--process-progress");
               processSection.style.removeProperty("--process-track-scale");
+              processSection.style.removeProperty("--process-dvh");
               processStages.forEach((stage) => stage.classList.remove("is-active"));
               processTimeline.scrollTrigger?.kill();
               setNavHidden(false, { immediate: true });

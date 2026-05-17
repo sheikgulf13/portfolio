@@ -1,4 +1,4 @@
-import { contact } from "@/utils/portfolioData";
+import { contact, socialLinks } from "@/utils/portfolioData";
 
 export default function Contact() {
   return (
@@ -31,6 +31,15 @@ export default function Contact() {
         >
           {contact.email} <span className="arrow">→</span>
         </a>
+        <ul className="contact-links contact-links-mobile reveal" aria-label="Social links">
+          {socialLinks.map((link) => (
+            <li key={link.label}>
+              <a href={link.href} target="_blank" rel="noreferrer" data-magnetic data-cursor-size="sm">
+                {link.label}
+              </a>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

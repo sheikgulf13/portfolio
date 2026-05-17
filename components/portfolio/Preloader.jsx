@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-const COUNT_DURATION_MS = 1700;
+const COUNT_DURATION_MS = 800;
 const START_HOLD_MS = 500;
-const END_HOLD_MS = 1500;
+const END_HOLD_MS = 1000;
 const COUNT_FADE_MS = 320;
 const BG_FADE_MS = 220;
 
